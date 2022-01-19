@@ -1,0 +1,61 @@
+---
+title: "Week 2 homework answers"
+output: html_notebook
+---
+
+```{r}
+library(rethinking)
+```
+
+
+1. Construct a linear regression of weight as predicted by height, using the adults (age 18 or greater) from the Howell1 dataset.  The heights listed below were recorded in the 
+!Kung census, but the weights were not recorded for these individuals.  Provde predicted
+weights and 89% compatibility intervals for each of these individuals.  That is, fill in
+the table below, using model-based predictions.
+
+```{r}
+data("Howell1")
+d <- Howell1
+d2 <- d[d$age >=18,]
+```
+
+```{r}
+# define the average weight, x-bar
+xbar <- mean(d2$height)
+
+# fit model
+m2a <- quap(
+  alist(
+    weight ~ dnorm( mu, sigma) ,
+    mu <- a + b*(height - xbar),
+    a ~ dnorm(45, 10),
+    b ~ dlnorm(0, 1),
+    sigma ~ dunif(0, 20)
+  ),
+  data=d2)
+```
+
+```{r}
+plot(weight ~ height, data=d2, col=rangi2)
+post <- extract.samples(m2a)
+a_map <- mean(post$a)
+b_map <- mean(post$b)
+curve(a_map + b_map*(x - xbar) , add=TRUE)
+```
+```{r}
+mu_at_140 <- post$a + post$b * (140 - xbar)
+mean(mu_at_140)
+PI(mu_at_140, prob=0.89)
+```
+
+```{r}
+mu_at_160 <- post$a + post$b * (160 - xbar)
+mean(mu_at_160)
+PI(mu_at_160, prob=0.89)
+```
+```{r}
+mu_at_175 <- post$a + post$b * (175 - xbar)
+mean(mu_at_175)
+PI(mu_at_175, prob=0.89)
+```
+
