@@ -15,12 +15,14 @@ library(rethinking)
 
 
 ```{r}
-p_grid <- seq(from=0, to=1, length.out=20)
-prior <- rep(1, 20)
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(1, 1000)
 likelihood <- dbinom(4, 15, prob=p_grid)
 unstd.posterior <- likelihood * prior
 posterior <- unstd.posterior/sum(unstd.posterior)
 plot(p_grid, posterior)
+sample <- sample(p_grid, prob=posterior, size=1e4, replace=TRUE)
+dens(sample)
 ```
 2.  Now suppose the data are 4 water and 2 land.  Compute the 
 posterior again, but this time use a prior that is zero below
@@ -29,12 +31,14 @@ information that a majority of the Earth's surface is water.
 
 
 ```{r}
-p_grid <- seq(from=0, to=1, length.out=20)
+p_grid <- seq(from=0, to=1, length.out=1000)
 prior <- ifelse(p_grid < 0.5, 0, 1)
 likelihood <- dbinom(4, 6, prob=p_grid)
 unstd.posterior <- likelihood * prior
 posterior <- unstd.posterior/sum(unstd.posterior)
 plot(p_grid, posterior)
+samples2 <- sample(p_grid, prob=posterior, size=1e4, replace=TRUE)
+dens(samples2)
 ```
 
 
@@ -45,12 +49,12 @@ what might you misunderstand about the shape of the posterior
 distribution?
 
 ```{r}
-samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
-PI(samples, prob=0.89)
+#samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
+PI(samples2, prob=0.89)
 ```
 
 ```{r}
-HPDI(samples, prob=0.89)
+HPDI(samples2, prob=0.89)
 ```
 
 4. Suppose there is bias in sampling so that Land is more likely"

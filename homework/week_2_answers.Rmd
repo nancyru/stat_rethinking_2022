@@ -59,3 +59,169 @@ mean(mu_at_175)
 PI(mu_at_175, prob=0.89)
 ```
 
+2. From the Howell1 dataset, consider only the people younger than 13 years old.
+Estimate the causal association between age and weight.  Assume that age 
+influences weight through two paths.  First, age influences height, and height
+influences weight.  Second, age directly influences weight through age-related
+changes in muscle growth and body proportions.  All of this implies this causal
+model (DAG):
+Use a linear regression to estimate the total (not just the direct) causal effect
+of each year of growth on weight.  Be sure to carefully consider the priors. Try
+using prior predictive simulation to assess what they imply.
+
+```{r}
+d3 <- d[d$age <13,]
+```
+
+```{r}
+d3$A <- scale(d3$age)
+d3$H <- scale(d3$height)
+d3$W <- scale(d3$weight)
+```
+
+```{r}
+sd(d3$age)
+sd(d3$height)
+sd(d3$weight)
+```
+
+# single variate H
+```{r}
+mh.2H <- quap(
+  alist(
+    W ~ dnorm(mu, sigma) ,
+    mu <- a + bH*H,
+    a ~ dnorm(0, 0.2),
+    bH ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=d3
+)
+precis(mh.2H)
+```
+```{r}
+#simulate prior of single variate H
+set.seed(10)
+prior <- extract.prior(mh.2H)
+mu <- link(mh.2H, post=prior, data=list(H=c(-2, 2)))
+plot(NULL, xlim=c(-2, 2), ylim=c(-2, 2))
+for (i in 1:50) lines(c(-2, 2), mu[i,], col=col.alpha("black", 0.4))
+```
+# single variate A 
+
+```{r}
+mh.2A <- quap(
+  alist(
+    W ~ dnorm(mu, sigma) ,
+    mu <- a + bA*A,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=d3
+)
+precis(mh.2A)
+```
+
+
+```{r}
+#simulate from priors, single variate A
+set.seed(10)
+prior <- extract.prior(mh.2A)
+mu <- link(mh.2A, post=prior, data=list(A=c(-2, 2)))
+plot(NULL, xlim=c(-2, 2), ylim=c(-2, 2))
+for (i in 1:50) lines(c(-2, 2), mu[i,], col=col.alpha("black", 0.4))
+```
+# multiple regression
+```{r}
+mh.2 <- quap(
+  alist(
+    W ~ dnorm(mu, sigma) ,
+    mu <- a + bA*A + bH*H,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    bH ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=d3
+)
+precis(mh.2)
+```
+The direct path of A -> is no longer signficant
+```{r}
+plot(coeftab(mh.2H, mh.2A, mh.2), par=c("bA", "bH"))
+```
+Once we know the height of individual, there is little or no additional 
+predictive power in also knowing the age.
+
+Counterfactual - simulate effects of varying age
+```{r}
+mh.2_A <-quap(
+  alist(
+  ## A -> W <- H
+    W ~ dnorm(mu, sigma) ,
+    mu <- a + bA*A + bH*H,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    bH ~ dnorm(0, 0.5),
+    sigma ~ dexp(1),
+  ## A -> H
+    H ~ dnorm(mu_H, sigma_H) ,
+    mu_H <- aH + bAH*A,
+    aH ~ dnorm(0, 0.2),
+    bAH ~ dnorm(0, 0.5),
+    sigma_H ~ dexp(1) 
+  ), data=d3
+)
+precis(mh.2_A)
+```
+bAH tells us that age and height are strongly correlated.
+
+Simulate values of age:
+
+```{r}
+A_seq <- seq(from=-2, to=2, length.out=30)
+sim_dat <- data.frame(A=A_seq)
+s <- sim(mh.2_A, data=sim_dat, vars=c("H", "W"))
+```
+
+```{r}
+# display counterfactual predictions
+plot(sim_dat$A, colMeans(s$W), ylim=c(-2, 2), type="l",
+        xlab="manipulated A", ylab="counterfactual W")
+shade(apply(s$W, 2, PI), sim_dat$A)
+mtext("Total counterfactual effect of A on W")
+```
+
+How is this differnt from the one-variable linear regression of A on W?
+
+3.  Now suppose the causal association between age and weight might be different
+for boys and girls. Use a single linear regression, with a categorical variable
+for sex, to estimate the total causal effect of age on weight separately
+for boys and girls.  How do girls and boys differ?  Provide one or more posterior
+contrasts as a summary.
+
+```{r}
+d3$sex <- ifelse( d3$male ==1, 2, 1)
+str(d3$sex)
+```
+
+
+```{r}
+mh.3 <-quap(
+  alist(
+    W ~ dnorm(mu, sigma) , 
+    mu <- a[sex] + bA[sex]*A,
+    a[sex] ~ dnorm(0, 0.2),
+    bA[sex] ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data=d3
+)
+precis(mh.3, depth=2)
+```
+
+```{r}
+post <- extract.samples(mh.3)
+post$diff_fm <- post$a[,1] - post$a[,2]
+precis(post, depth=2)
+```
+
+
+For males, there is a slightly higher causal effect of age on weight.
