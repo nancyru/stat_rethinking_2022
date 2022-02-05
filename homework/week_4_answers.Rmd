@@ -1,0 +1,247 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+You can use MCMC to solve these problems, if you like.  But it's not required.
+
+1. Revist the marriage, age, and happiness collider bias example from Chapter 6.
+Run models m6.9 and m6.10 again (pages 178-179).  Compare these two models
+using both PSIS and WAIC.  Which model is expected to make better predictions,
+according to these criteria?  On the basis of the causal model, how should
+you interpret the parameter estimates from the model preferred by PSIS
+and WAIC?
+
+```{r}
+library(rethinking)
+```
+```{r}
+d <- sim_happiness(seed=1977, N_years=1000)
+d2 <- d[d$age>17,]
+d2$A <- (d2$age - 18) / (65-18)
+```
+
+```{r}
+d2$mid <- d2$married + 1
+m6.9 <- quap(
+  alist(
+   happiness ~ dnorm(mu, sigma),
+   mu <- a[mid] + bA*A,
+   a[mid] ~ dnorm(0, 1),
+   bA ~ dnorm(0, 2),
+   sigma ~ dexp(1)
+  ), data=d2 )
+precis(m6.9, depth=2)
+```
+
+```{r}
+m6.10 <- quap(
+  alist(
+    happiness ~ dnorm(mu, sigma),
+    mu <- a + bA*A,
+    a ~ dnorm(0, 1),
+    bA ~ dnorm(0, 2),
+    sigma ~ dexp(1)
+  ), data=d2
+)
+precis(m6.10)
+```
+
+```{r}
+PSIS(m6.9)
+```
+```{r}
+WAIC(m6.9)
+```
+
+```{r}
+PSIS(m6.10)
+```
+
+```{r}
+WAIC(m6.10)
+```
+PSIS -- tries to estimate leave-one-out cross validation
+WAIC -- tries to estimate out-of-sample K-L Divergence
+
+The first model m6.9 predicts happiness as a linear regression on marriage and
+age.  As described in the textbook, this leads to a misleading association between
+age and happiness.  That's is because according to the causal model, marriage
+is a collider of age and happiness.
+
+The second model m6.10 predicts happiness as a linear regression on age, and
+correctly shows that happiness and age are not associated.
+
+The first model m6.9 has lower PSIS and WAIC scores, which means that it is 
+better at prediction, even though it's coefficients cannot be interprested
+in a causal way.
+
+2. Reconsider the urban fox analysis from last week's homework.  On the basis
+of PSIS and WAIC scores, which combination of variables best predicts body
+weight (W, weight)?  How would you interpret the estimates from the best scoring
+model?
+
+Code from last week
+```{r}
+data(foxes)
+f <- foxes
+```
+
+
+```{r}
+#standardize variables
+f$A <- scale(f$area)
+f$F <- scale(f$avgfood)
+f$W <- scale(f$weight)
+f$G <- scale(f$groupsize)
+```
+
+
+The total effect of F on W can be estimated with a single regression on F.
+```{r}
+m.w3q2a <- quap(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- a + bF*F,
+    a ~ dnorm(0, 0.2),
+    bF ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data = f)
+precis(m.w3q2a)
+```
+
+The direct effect of F on W can be estimated with a multiple regression on F and G.
+```{r}
+m.w3q2b <- quap(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- a + bF*F +bG*G,
+    a ~ dnorm(0, 0.2),
+    bF ~ dnorm(0, 0.5),
+    bG ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data = f)
+precis(m.w3q2b)
+```
+```{r}
+PSIS(m.w3q2a)
+WAIC(m.w3q2a)
+```
+```{r}
+PSIS(m.w3q2b)
+WAIC(m.w3q2b)
+```
+
+The PSIS and WAIC scores for the second model m.w3q2b, a multiple regression
+on F and G, are slightly lower which means this model has more predictive power.
+
+3. Build a predictive model of the relationship show on the cover of the book,
+the relationship between the timing of cherry blossoms and March temperature
+in the same year.  The data are found in data(cherry_blossomes).  Consider at
+least two functions to predict doy with temp.  Compare them with PSIS or WAIC.
+  
+Suppose March temperatures reach 9 degrees by the year 2050.  What does you
+best model predict for the predictive distribution of the day-in-year that the 
+cherry trees will blossom?
+
+```{r}
+data("cherry_blossoms")
+```
+
+```{r}
+dcherry <- cherry_blossoms
+```
+
+```{r}
+#remove nulls
+dcherry2 = dcherry[complete.cases(dcherry), ]
+```
+
+
+```{r}
+#shift xscale so it's centered at 0
+dcherry2$T <- dcherry2$temp-6.5
+dcherry2$TU <- dcherry2$temp_upper-6.5
+dcherry2$TL <- dcherry2$temp_lower-6.5
+#Tbar = mean(dcherry2$temp)
+```
+
+
+```{r}
+m.cherry1a <- quap(
+  alist(
+    doy ~ dnorm(mu, sigma),
+    mu <- a + bT*T,
+    a ~ dnorm(105, 2),
+    bT ~ dnorm(0, 5),
+    sigma ~ dexp(1)
+  ), data = dcherry2)
+precis(m.cherry1a)
+```
+
+```{r}
+#simluate from priors
+set.seed(10)
+prior <- extract.prior(m.cherry1a)
+mu <-link(m.cherry1a, post=prior, data=list(T=c(-2.5, 2.5)))
+plot(NULL, xlim=c(-2.5, 2.5), ylim=c(86,124))
+for (i in 1:50) lines( c(-2.5, 2.5), mu[i,], col=col.alpha("black", 0.4))
+```
+
+```{r}
+m.cherry2a <- quap(
+  alist(
+    doy ~ dnorm(mu, sigma),
+    mu <- a + bT*T +bTU*TU + bTL*TL,
+    a ~ dnorm(105, 12),
+    bT ~ dnorm(0, 2),
+    bTU ~ dnorm(0, 2),
+    bTL ~ dnorm(0, 2),
+    sigma ~ dexp(1)
+  ), data = dcherry2)
+precis(m.cherry2a)
+```
+
+```{r}
+PSIS(m.cherry1a)
+WAIC(m.cherry1a)
+```
+```{r}
+PSIS(m.cherry2a)
+WAIC(m.cherry2a)
+```
+The PSIS and WAIC for the model with one variable temp, and the model with
+three varaibles temp, temp_upper, and temp_lower, are almost the same, which 
+means, they have almost the same predictive ability.
+
+One more try including the year
+
+```{r}
+dcherry2$Y <- scale(dcherry2$year)
+
+m.cherry3a <- quap(
+  alist(
+    doy ~ dnorm(mu, sigma),
+    mu <- a + bT*T + bY*Y,
+    a ~ dnorm(105, 12),
+    bT ~ dnorm(0, 2),
+    bY ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ), data = dcherry2)
+precis(m.cherry3a)
+PSIS(m.cherry3a)
+WAIC(m.cherry3a)
+```
+About the same performance
+
+
+```{r}
+#How does m.cherry1a predict for 9 degrees in year 2050?
+data.sim <- list(T = c(9-6.5))
+t_sim <- sim(m.cherry1a, data=data.sim)
+Edoy <- apply(t_sim, 2, mean)
+t_c1 <- apply(t_sim, 2, PI, prob=0.89)
+datr <- cbind(T = c(9-6.5), Edoy, L89=t_c1[1,], U89=t_c1[2,])
+round(datr, 1)
+```
+
